@@ -16,8 +16,8 @@ function displayInfo {
   echo
   printDelimeter
   echo
-  HELM_CHECK_VERSION="v0.1.4"
-  HELM_CHECK_SOURCES="https://github.com/igabaydulin/helm-check-action"
+  HELM_CHECK_VERSION="v0.1.5"
+  HELM_CHECK_SOURCES="https://github.com/chemistrygroup/helm-check-action"
   echo "Helm-Check $HELM_CHECK_VERSION"
   echo -e "Source code: $HELM_CHECK_SOURCES"
   echo
@@ -26,27 +26,52 @@ function displayInfo {
 
 function helmLint {
   echo -e "\n\n\n"
-  echo -e "1. Checking a chart for possible issues\n"
+  echo -e "2. Checking a chart for possible issues\n"
+  if [[ "$1" -eq 0 ]]; then
+    if [ -z "$CHART_LOCATION" ]; then
+      echo "Skipped due to condition: \$CHART_LOCATION is not provided"
+      return -1
+    fi
+    echo "helm lint $CHART_LOCATION"
+    printStepExecutionDelimeter
+    helm lint "$CHART_LOCATION"
+    HELM_LINT_EXIT_CODE=$?
+    printStepExecutionDelimeter
+    if [ $HELM_LINT_EXIT_CODE -eq 0 ]; then
+      echo "Result: SUCCESS"
+    else
+      echo "Result: FAILED"
+    fi
+    return $HELM_LINT_EXIT_CODE
+  else
+    echo "Skipped due to failure: Previous step has failed"
+    return $1
+  fi
+}
+
+function helmDependencyUpdate {
+  echo -e "\n\n\n"
+  echo -e "1. Updating chart dependencies\n"
   if [ -z "$CHART_LOCATION" ]; then
     echo "Skipped due to condition: \$CHART_LOCATION is not provided"
     return -1
   fi
-  echo "helm lint $CHART_LOCATION"
+  echo "helm dependency update $CHART_LOCATION"
   printStepExecutionDelimeter
-  helm lint "$CHART_LOCATION"
-  HELM_LINT_EXIT_CODE=$?
+  helm dependency update "$CHART_LOCATION"
+  HELM_DEP_UPDATE_EXIT_CODE=$?
   printStepExecutionDelimeter
-  if [ $HELM_LINT_EXIT_CODE -eq 0 ]; then
+  if [ $HELM_DEP_UPDATE_EXIT_CODE -eq 0 ]; then
     echo "Result: SUCCESS"
   else
     echo "Result: FAILED"
   fi
-  return $HELM_LINT_EXIT_CODE
+  return $HELM_DEP_UPDATE_EXIT_CODE
 }
 
 function helmTemplate {
   printLargeDelimeter
-  echo -e "2. Trying to render templates with provided values\n"
+  echo -e "3. Trying to render templates with provided values\n"
   if [[ "$1" -eq 0 ]]; then
     if [ -n "$CHART_VALUES" ]; then
       echo "helm template --values $CHART_VALUES $CHART_LOCATION"
@@ -74,7 +99,7 @@ function helmTemplate {
 
 function totalInfo {
   printLargeDelimeter
-  echo -e "3. Summary\n"
+  echo -e "4. Summary\n"
   if [[ "$1" -eq 0 ]]; then
     echo "Examination is completed; no errors found!"
     exit 0
@@ -85,6 +110,7 @@ function totalInfo {
 }
 
 displayInfo
-helmLint
+helmDependencyUpdate
+helmLint $?
 helmTemplate $?
 totalInfo $?
