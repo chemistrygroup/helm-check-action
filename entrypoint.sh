@@ -24,17 +24,40 @@ function displayInfo {
   printDelimeter
 }
 
+
+function helmDependencyUpdate {
+  echo -e "\n"
+  echo -e "1. Updating chart dependencies\n"
+  if [ -z "$1" ]; then
+    echo "Skipped due to condition: \$1 is not provided"
+    return -1
+  fi
+  echo "helm dependency update $1"
+  printStepExecutionDelimeter
+  helm dependency update "$1"
+  HELM_DEP_UPDATE_EXIT_CODE=$?
+  printStepExecutionDelimeter
+  if [ $HELM_DEP_UPDATE_EXIT_CODE -eq 0 ]; then
+    echo "Result: SUCCESS"
+  else
+    echo "Result: FAILED"
+  fi
+  return $HELM_DEP_UPDATE_EXIT_CODE
+}
+
+
 function helmLint {
-  echo -e "\n\n\n"
+  echo -e "\n"
   echo -e "2. Checking a chart for possible issues\n"
+  
   if [[ "$1" -eq 0 ]]; then
-    if [ -z "$CHART_LOCATION" ]; then
-      echo "Skipped due to condition: \$CHART_LOCATION is not provided"
+    if [ -z "$2" ]; then
+      echo "Skipped due to condition: \$2 is not provided"
       return -1
     fi
-    echo "helm lint $CHART_LOCATION"
+    echo "helm lint $2"
     printStepExecutionDelimeter
-    helm lint "$CHART_LOCATION"
+    helm lint "$2"
     HELM_LINT_EXIT_CODE=$?
     printStepExecutionDelimeter
     if [ $HELM_LINT_EXIT_CODE -eq 0 ]; then
@@ -49,34 +72,14 @@ function helmLint {
   fi
 }
 
-function helmDependencyUpdate {
-  echo -e "\n\n\n"
-  echo -e "1. Updating chart dependencies\n"
-  if [ -z "$CHART_LOCATION" ]; then
-    echo "Skipped due to condition: \$CHART_LOCATION is not provided"
-    return -1
-  fi
-  echo "helm dependency update $CHART_LOCATION"
-  printStepExecutionDelimeter
-  helm dependency update "$CHART_LOCATION"
-  HELM_DEP_UPDATE_EXIT_CODE=$?
-  printStepExecutionDelimeter
-  if [ $HELM_DEP_UPDATE_EXIT_CODE -eq 0 ]; then
-    echo "Result: SUCCESS"
-  else
-    echo "Result: FAILED"
-  fi
-  return $HELM_DEP_UPDATE_EXIT_CODE
-}
-
 function helmTemplate {
   printLargeDelimeter
   echo -e "3. Trying to render templates with provided values\n"
   if [[ "$1" -eq 0 ]]; then
-    if [ -n "$CHART_VALUES" ]; then
-      echo "helm template --values $CHART_VALUES $CHART_LOCATION"
+    if [ -n "$3" ]; then
+      echo "helm template --values $3 $2"
       printStepExecutionDelimeter
-      helm template --values "$CHART_VALUES" "$CHART_LOCATION"
+      helm template --values "$3" "$2"
       HELM_TEMPLATE_EXIT_CODE=$?
       printStepExecutionDelimeter
       if [ $HELM_TEMPLATE_EXIT_CODE -eq 0 ]; then
@@ -99,7 +102,7 @@ function helmTemplate {
 
 function totalInfo {
   printLargeDelimeter
-  echo -e "4. Summary\n"
+  echo -e "Summary\n"
   if [[ "$1" -eq 0 ]]; then
     echo "Examination is completed; no errors found!"
     exit 0
@@ -109,8 +112,53 @@ function totalInfo {
   fi
 }
 
-displayInfo
-helmDependencyUpdate
-helmLint $?
-helmTemplate $?
-totalInfo $?
+function displayChartInfo {
+  printDelimeter
+  echo -e "Processing Chart $3"
+  printDelimeter
+  echo -e " Chart Location: $1"
+  echo -e " Chart Values: $2"
+  printDelimeter
+}
+
+counter=0
+error=0
+
+
+
+if [ -z "$CHART_LOCATION" ] && [ -z "$CHART_VALUES" ]; then 
+  if [ -z "$CHART_DIRECTORY" ]; then 
+    echo
+    printDelimeter
+    echo
+    echo "You must Provide a CHART_LOCATION and a CHART_VALUES variables or
+a CHART_DIRECTORY for multiple charts"
+    echo
+    printDelimeter
+    echo
+    exit 1
+  else
+    displayInfo
+    for f in charts/*; do
+        if [ -d "$f" ]; then
+            displayChartInfo $f "$f/values.yaml" "$((counter+1))"
+            helmDependencyUpdate $f
+            helmLint $? $f
+            returnval=$?
+            helmTemplate $returnval $f "$f/values.yaml"
+            if [ "$returnval" eq 1 ]; then 
+                counter=counter+1
+                error=1
+            fi
+        fi
+    done 
+  fi
+else
+  displayInfo
+  helmDependencyUpdate $CHART_LOCATION
+  helmLint $? $CHART_LOCATION
+  helmTemplate $? $CHART_LOCATION
+  error=$?
+fi
+totalInfo $error
+
